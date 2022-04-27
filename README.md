@@ -65,6 +65,8 @@ Parameters: url=http://s3.wasabisys.com, bucket=jeff-s3-benchmark, duration=60, 
 Loop 1: PUT time 60.1 secs, objects = 5484, speed = 91.3MB/sec, 91.3 operations/sec.
 Loop 1: GET time 60.1 secs, objects = 5483, speed = 91.3MB/sec, 91.3 operations/sec.
 Loop 1: DELETE time 1.9 secs, 2923.4 deletes/sec.
+Loop 1: LIST2 time 60.0 secs, objects = 14887, 248.1 operations/sec. Slowdowns = 3
+Loop 1: LISTver time 60.0 secs, objects = 17292, 288.2 operations/sec. Slowdowns = 0
 Benchmark completed.
 ```
 

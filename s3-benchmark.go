@@ -12,11 +12,6 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/pivotal-golang/bytefmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -30,6 +25,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"code.cloudfoundry.org/bytefmt"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 // Global variables
@@ -38,8 +39,10 @@ var duration_secs, threads, loops int
 var object_size uint64
 var object_data []byte
 var object_data_md5 string
-var running_threads, upload_count, download_count, delete_count, upload_slowdown_count, download_slowdown_count, delete_slowdown_count int32
-var endtime, upload_finish, download_finish, delete_finish time.Time
+var running_threads,
+	upload_count, download_count, delete_count, listver_count, listobj_count,
+	upload_slowdown_count, download_slowdown_count, delete_slowdown_count, listver_slowdown_count, listobj_slowdown_count int32
+var endtime, upload_finish, download_finish, delete_finish, listver_finish, listobj_finish time.Time
 
 func logit(msg string) {
 	fmt.Println(msg)
@@ -217,7 +220,7 @@ func runUpload(thread_num int) {
 		if resp, err := httpClient.Do(req); err != nil {
 			log.Fatalf("FATAL: Error uploading object %s: %v", prefix, err)
 		} else if resp != nil && resp.StatusCode != http.StatusOK {
-			if (resp.StatusCode == http.StatusServiceUnavailable) {
+			if resp.StatusCode == http.StatusServiceUnavailable {
 				atomic.AddInt32(&upload_slowdown_count, 1)
 				atomic.AddInt32(&upload_count, -1)
 			} else {
@@ -245,7 +248,7 @@ func runDownload(thread_num int) {
 		if resp, err := httpClient.Do(req); err != nil {
 			log.Fatalf("FATAL: Error downloading object %s: %v", prefix, err)
 		} else if resp != nil && resp.Body != nil {
-			if (resp.StatusCode == http.StatusServiceUnavailable){
+			if resp.StatusCode == http.StatusServiceUnavailable {
 				atomic.AddInt32(&download_slowdown_count, 1)
 				atomic.AddInt32(&download_count, -1)
 			} else {
@@ -255,6 +258,90 @@ func runDownload(thread_num int) {
 	}
 	// Remember last done time
 	download_finish = time.Now()
+	// One less thread
+	atomic.AddInt32(&running_threads, -1)
+}
+
+func runListingVersions(thread_num int) {
+	var keyMarker, versionId, delimiter *string
+	objnum := rand.Int31n(download_count) + 1
+	prefix := fmt.Sprintf(`Object-%d`, objnum%100)
+	client := getS3Client()
+	delimiterCounter := 0
+	for time.Now().Before(endtime) {
+		atomic.AddInt32(&listver_count, 1)
+		in := &s3.ListObjectVersionsInput{
+			Bucket:          aws.String(bucket),
+			KeyMarker:       keyMarker,
+			VersionIdMarker: versionId,
+			MaxKeys:         aws.Int64(1000),
+			Prefix:          &prefix,
+			Delimiter:       delimiter,
+		}
+		res, err := client.ListObjectVersions(in)
+		if err != nil {
+			atomic.AddInt32(&listver_slowdown_count, 1)
+			atomic.AddInt32(&listver_count, -1)
+			log.Printf(`WARNING: failed %v %s`, in, err)
+		}
+		if res == nil || len(res.Versions) == 0 || res.KeyMarker == nil || res.NextKeyMarker == nil {
+			objnum = rand.Int31n(download_count) + 1
+			prefix = fmt.Sprintf(`Object-%d`, objnum%100)
+			delimiterCounter++
+			delimiterCounter %= 10
+			if delimiterCounter > 7 {
+				delimiter = nil
+			} else {
+				delimiter = aws.String(fmt.Sprint(delimiterCounter))
+			}
+		} else {
+			keyMarker = res.NextKeyMarker
+			versionId = res.NextVersionIdMarker
+		}
+	}
+	// Remember last done time
+	listver_finish = time.Now()
+	// One less thread
+	atomic.AddInt32(&running_threads, -1)
+}
+
+func runListObjectsV2(thread_num int) {
+	var continuationToken, delimiter *string
+	objnum := rand.Int31n(download_count) + 1
+	prefix := fmt.Sprintf(`Object-%d`, objnum%100)
+	client := getS3Client()
+	delimiterCounter := 0
+	for time.Now().Before(endtime) {
+		atomic.AddInt32(&listobj_count, 1)
+		in := &s3.ListObjectsV2Input{
+			Bucket:            aws.String(bucket),
+			MaxKeys:           aws.Int64(1000),
+			Prefix:            &prefix,
+			ContinuationToken: continuationToken,
+			Delimiter:         delimiter,
+		}
+		res, err := client.ListObjectsV2(in)
+		if err != nil {
+			atomic.AddInt32(&listobj_slowdown_count, 1)
+			atomic.AddInt32(&listobj_count, -1)
+			log.Printf(`WARNING: failed %v %s`, in, err)
+		}
+		if res == nil || len(res.Contents) == 0 || res.NextContinuationToken == nil {
+			objnum = rand.Int31n(download_count) + 1
+			prefix = fmt.Sprintf(`Object-%d`, objnum%100)
+			delimiterCounter++
+			delimiterCounter %= 10
+			if delimiterCounter > 7 {
+				delimiter = nil
+			} else {
+				delimiter = aws.String(fmt.Sprint(delimiterCounter))
+			}
+		} else {
+			continuationToken = res.NextContinuationToken
+		}
+	}
+	// Remember last done time
+	listobj_finish = time.Now()
 	// One less thread
 	atomic.AddInt32(&running_threads, -1)
 }
@@ -270,7 +357,7 @@ func runDelete(thread_num int) {
 		setSignature(req)
 		if resp, err := httpClient.Do(req); err != nil {
 			log.Fatalf("FATAL: Error deleting object %s: %v", prefix, err)
-		} else if (resp != nil && resp.StatusCode == http.StatusServiceUnavailable) {
+		} else if resp != nil && resp.StatusCode == http.StatusServiceUnavailable {
 			atomic.AddInt32(&delete_slowdown_count, 1)
 			atomic.AddInt32(&delete_count, -1)
 		}
@@ -374,6 +461,35 @@ func main() {
 		bps = float64(uint64(download_count)*object_size) / download_time
 		logit(fmt.Sprintf("Loop %d: GET time %.1f secs, objects = %d, speed = %sB/sec, %.1f operations/sec. Slowdowns = %d",
 			loop, download_time, download_count, bytefmt.ByteSize(uint64(bps)), float64(download_count)/download_time, download_slowdown_count))
+
+		running_threads = int32(threads)
+		starttime = time.Now()
+		endtime = starttime.Add(time.Second * time.Duration(duration_secs))
+		for n := 1; n <= threads; n++ {
+			go runListObjectsV2(n)
+		}
+		// Wait for it to finish
+		for atomic.LoadInt32(&running_threads) > 0 {
+			time.Sleep(time.Millisecond)
+		}
+		listing_time := listobj_finish.Sub(starttime).Seconds()
+		logit(fmt.Sprintf("Loop %d: LIST2 time %.1f secs, objects = %d, %.1f operations/sec. Slowdowns = %d",
+			loop, download_time, listobj_count, float64(listobj_count)/listing_time, listobj_slowdown_count))
+
+		// Run the listing case
+		running_threads = int32(threads)
+		starttime = time.Now()
+		endtime = starttime.Add(time.Second * time.Duration(duration_secs))
+		for n := 1; n <= threads; n++ {
+			go runListingVersions(n)
+		}
+		// Wait for it to finish
+		for atomic.LoadInt32(&running_threads) > 0 {
+			time.Sleep(time.Millisecond)
+		}
+		listing_time = listver_finish.Sub(starttime).Seconds()
+		logit(fmt.Sprintf("Loop %d: LISTver time %.1f secs, objects = %d, %.1f operations/sec. Slowdowns = %d",
+			loop, download_time, listver_count, float64(listver_count)/listing_time, listver_slowdown_count))
 
 		// Run the delete case
 		running_threads = int32(threads)

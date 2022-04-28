@@ -65,9 +65,33 @@ Parameters: url=http://s3.wasabisys.com, bucket=jeff-s3-benchmark, duration=60, 
 Loop 1: PUT time 60.1 secs, objects = 5484, speed = 91.3MB/sec, 91.3 operations/sec.
 Loop 1: GET time 60.1 secs, objects = 5483, speed = 91.3MB/sec, 91.3 operations/sec.
 Loop 1: DELETE time 1.9 secs, 2923.4 deletes/sec.
-Loop 1: LIST2 time 60.0 secs, objects = 14887, 248.1 operations/sec. Slowdowns = 3
-Loop 1: LISTver time 60.0 secs, objects = 17292, 288.2 operations/sec. Slowdowns = 0
 Benchmark completed.
+```
+
+example output for this fork:
+
+```
+Loop 1: PUT time 60.0 secs, objects = 10087, speed = 168.1KB/sec, 168.1 operations/sec. Slowdowns = 0
+Loop 1: GET time 60.0 secs, objects = 30384, speed = 506.4KB/sec, 506.4 operations/sec. Slowdowns = 0
+Loop 1: LIST2 time 60.0 secs, ops = 1285, speed = 50.0 rows/sec, 21.4 operations/sec. Slowdowns = 0
+Loop 1: LISTver time 60.0 secs, ops = 1299, speed = 33.3 rows/sec, 21.6 operations/sec. Slowdowns = 0
+Loop 1: DELETE time 53.7 secs, 187.7 deletes/sec. Slowdowns = 0
+```
+
+minio example (minio doesn't implement `ListObjectVersions` API):
+```
+cd /tmp
+curl https://raw.githubusercontent.com/minio/minio/master/docs/orchestration/docker-compose/docker-compose.yaml -o docker-compose.yml
+curl https://raw.githubusercontent.com/minio/minio/master/docs/orchestration/docker-compose/nginx.conf -o nginx.conf
+docker-compose up
+  
+go run s3-benchmark.go -a minioadmin -s minioadmin -u http://127.0.0.1:9000 -z 1K
+
+Loop 1: PUT time 60.0 secs, objects = 10344, speed = 172.4KB/sec, 172.4 operations/sec. Slowdowns = 0
+Loop 1: GET time 60.0 secs, objects = 37912, speed = 631.9KB/sec, 631.9 operations/sec. Slowdowns = 0
+Loop 1: LIST2 time 60.0 secs, ops = 980, speed = 13.5 rows/sec, 16.3 operations/sec. Slowdowns = 47788
+Loop 1: LISTver time 60.0 secs, ops = 936, speed = 13.5 rows/sec, 15.6 operations/sec. Slowdowns = 46391
+Loop 1: DELETE time 31.8 secs, 324.8 deletes/sec. Slowdowns = 0
 ```
 
 # Note

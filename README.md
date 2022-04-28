@@ -71,11 +71,26 @@ Benchmark completed.
 example output for this fork:
 
 ```
-Loop 1: PUT time 60.0 secs, objects = 10087, speed = 168.1KB/sec, 168.1 operations/sec. Slowdowns = 0
-Loop 1: GET time 60.0 secs, objects = 30384, speed = 506.4KB/sec, 506.4 operations/sec. Slowdowns = 0
-Loop 1: LIST2 time 60.0 secs, ops = 1285, speed = 50.0 rows/sec, 21.4 operations/sec. Slowdowns = 0
-Loop 1: LISTver time 60.0 secs, ops = 1299, speed = 33.3 rows/sec, 21.6 operations/sec. Slowdowns = 0
-Loop 1: DELETE time 53.7 secs, 187.7 deletes/sec. Slowdowns = 0
+go run s3-benchmark.go -a $LOCAL_ACCESS -s $LOCAL_SECRET -u http://127.0.0.1:32005 -z 1K
+Loop 1: PUT time 60.0 secs, objects = 10459, speed = 174.3KB/sec, 174.3 operations/sec. Slowdowns = 0
+Loop 1: GET time 60.0 secs, objects = 31796, speed = 529.9KB/sec, 529.9 operations/sec. Slowdowns = 0
+Loop 1: LIST2 time 60.0 secs, ops = 1916, speed = 393.5 rows/sec, 31.9 operations/sec. Slowdowns = 0
+Loop 1: LISTver time 60.0 secs, ops = 1632, speed = 4945.2 rows/sec, 27.2 operations/sec. Slowdowns = 0
+Loop 1: DELETE time 55.8 secs, 187.5 deletes/sec. Slowdowns = 0
+
+go run s3-benchmark.go -a $LOCAL_ACCESS -s $LOCAL_SECRET -u http://127.0.0.1:32005 -z 1K -t 8
+Loop 1: PUT time 60.0 secs, objects = 27458, speed = 457.5KB/sec, 457.5 operations/sec. Slowdowns = 0
+Loop 1: GET time 60.0 secs, objects = 58096, speed = 968.2KB/sec, 968.2 operations/sec. Slowdowns = 0
+Loop 1: LIST2 time 60.1 secs, ops = 4015, speed = 2041.7 rows/sec, 66.9 operations/sec. Slowdowns = 0
+Loop 1: LISTver time 60.2 secs, ops = 4338, speed = 23055.4 rows/sec, 72.0 operations/sec. Slowdowns = 0
+Loop 1: DELETE time 53.4 secs, 514.6 deletes/sec. Slowdowns = 0
+
+go run s3-benchmark.go -a $LOCAL_ACCESS -s $LOCAL_SECRET -u http://127.0.0.1:32005 -z 1K -t 32
+Loop 1: PUT time 60.1 secs, objects = 27839, speed = 463.4KB/sec, 463.4 operations/sec. Slowdowns = 0
+Loop 1: GET time 60.0 secs, objects = 60325, speed = 1005KB/sec, 1005.0 operations/sec. Slowdowns = 0
+Loop 1: LIST2 time 60.5 secs, ops = 3603, speed = 4814.3 rows/sec, 59.6 operations/sec. Slowdowns = 0
+Loop 1: LISTver time 60.4 secs, ops = 5019, speed = 27448.7 rows/sec, 83.1 operations/sec. Slowdowns = 0
+Loop 1: DELETE time 53.8 secs, 517.5 deletes/sec. Slowdowns = 0
 ```
 
 minio example (minio doesn't implement `ListObjectVersions` API):

@@ -290,6 +290,10 @@ func runListingVersions(thread_num int) {
 			atomic.AddInt32(&listVerCount, -1)
 			log.Printf(`WARNING: failed %v %s`, in, err)
 		}
+		if res != nil {
+			total := uint64(len(res.Versions) + len(res.CommonPrefixes))
+			atomic.AddUint64(&listVerRowsCount, total)
+		}
 		if res == nil || len(res.Versions) == 0 || res.KeyMarker == nil || res.NextKeyMarker == nil {
 			objnum = rand.Int31n(downloadCount) + 1
 			prefix = fmt.Sprintf(`Object-%d`, objnum%100)
@@ -303,8 +307,6 @@ func runListingVersions(thread_num int) {
 		} else {
 			keyMarker = res.NextKeyMarker
 			versionId = res.NextVersionIdMarker
-			total := uint64(len(res.Versions) + len(res.CommonPrefixes))
-			atomic.AddUint64(&listVerRowsCount, total)
 		}
 	}
 	// Remember last done time
@@ -334,6 +336,10 @@ func runListObjectsV2(thread_num int) {
 			atomic.AddInt32(&listObjCount, -1)
 			log.Printf(`WARNING: failed %v %s`, in, err)
 		}
+		if res != nil {
+			total := uint64(len(res.Contents) + len(res.CommonPrefixes))
+			atomic.AddUint64(&listObjRowsCount, total)
+		}
 		if res == nil || len(res.Contents) == 0 || res.NextContinuationToken == nil {
 			objnum = rand.Int31n(downloadCount) + 1
 			prefix = fmt.Sprintf(`Object-%d`, objnum%100)
@@ -346,8 +352,6 @@ func runListObjectsV2(thread_num int) {
 			}
 		} else {
 			continuationToken = res.NextContinuationToken
-			total := uint64(len(res.Contents) + len(res.CommonPrefixes))
-			atomic.AddUint64(&listObjRowsCount, total)
 		}
 	}
 	// Remember last done time

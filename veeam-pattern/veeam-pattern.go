@@ -293,16 +293,16 @@ type BenchmarkSuite struct {
 	ListErr int64
 	DelErr  int64
 
-	Runner []BenchmarkWaterfall
+	Runner []BenchmarkSteps
 
 	Config *BenchConfig
 }
 
 func (s *BenchmarkSuite) FromConfig(b *BenchConfig) *BenchmarkSuite {
-	s.Runner = make([]BenchmarkWaterfall, b.GoRoutineCount)
+	s.Runner = make([]BenchmarkSteps, b.GoRoutineCount)
 	s.Config = b
 	for z := 0; z < b.GoRoutineCount; z++ {
-		s.Runner[z] = BenchmarkWaterfall{
+		s.Runner[z] = BenchmarkSteps{
 			PutSeed: Seed(b.InitialSeed + uint64(z)),
 			Config:  b,
 			Suite:   s,
@@ -465,7 +465,10 @@ func (s *BenchmarkSuite) CreateUrl(objName string) string {
 	return s.Config.Endpoint + s.Config.BucketName + `/` + veeamPrefix + objName
 }
 
-type BenchmarkWaterfall struct {
+////////////////////////////////////////////////////////////////////////////////
+// benchmark runner
+
+type BenchmarkSteps struct {
 	PutSeed    Seed
 	PutMillis  uint64
 	GetMillis  uint64
@@ -478,7 +481,7 @@ type BenchmarkWaterfall struct {
 	Objects   []string
 }
 
-func (r *BenchmarkWaterfall) Run(_ int) {
+func (r *BenchmarkSteps) Run(_ int) {
 	// prepare progress bar
 	r.WaitGroup = sync.WaitGroup{}
 	deltaDur := time.Duration(r.Config.DeltaDurationSeconds) * time.Second
@@ -490,7 +493,7 @@ func (r *BenchmarkWaterfall) Run(_ int) {
 	r.WaitGroup.Wait()
 }
 
-func (r *BenchmarkWaterfall) RunPut() {
+func (r *BenchmarkSteps) RunPut() {
 	defer r.MarkDuration(time.Now(), &r.PutMillis)
 
 	cli := r.Suite.CreateS3Client()
@@ -525,7 +528,7 @@ func (r *BenchmarkWaterfall) RunPut() {
 	}
 }
 
-func (r *BenchmarkWaterfall) RunGet(delay time.Duration) {
+func (r *BenchmarkSteps) RunGet(delay time.Duration) {
 	time.Sleep(delay)
 	defer r.MarkDuration(time.Now(), &r.GetMillis)
 
@@ -562,7 +565,7 @@ func (r *BenchmarkWaterfall) RunGet(delay time.Duration) {
 	}
 }
 
-func (r *BenchmarkWaterfall) RunList(delay time.Duration) {
+func (r *BenchmarkSteps) RunList(delay time.Duration) {
 	time.Sleep(delay)
 	defer r.MarkDuration(time.Now(), &r.ListMillis)
 
@@ -627,7 +630,7 @@ func (r *BenchmarkWaterfall) RunList(delay time.Duration) {
 	}
 }
 
-func (r *BenchmarkWaterfall) RunDel(delay time.Duration) {
+func (r *BenchmarkSteps) RunDel(delay time.Duration) {
 	time.Sleep(delay)
 	defer r.MarkDuration(time.Now(), &r.DelMillis)
 
@@ -655,15 +658,18 @@ func (r *BenchmarkWaterfall) RunDel(delay time.Duration) {
 	}
 }
 
-func (r *BenchmarkWaterfall) AppendObjects() {
+func (r *BenchmarkSteps) AppendObjects() {
 	newObjects := r.PutSeed.NextVeeamFiles(r.Config.MaxFolder1Capacity, r.Config.MaxFolder2Capacity, r.Config.MaxFolder3Capacity)
 	r.Objects = append(r.Objects, newObjects...)
 }
 
-func (r *BenchmarkWaterfall) MarkDuration(start time.Time, v *uint64) {
+func (r *BenchmarkSteps) MarkDuration(start time.Time, v *uint64) {
 	atomic.AddUint64(v, uint64(time.Now().Sub(start).Milliseconds()))
 	defer r.WaitGroup.Done()
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// main
 
 func main() {
 	// parse benchmark parameter

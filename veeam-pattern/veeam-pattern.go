@@ -230,6 +230,31 @@ so f1 x f2 x f3 = total number of objects inside UUID1 folder
 			b.BucketName = val
 		}
 	}
+	if b.GoPutCount < b.GoGetCount {
+		b.GoGetCount = b.GoPutCount
+		fmt.Println(`overriding -G with -P`)
+	}
+	if b.GoPutCount < b.GoListCount {
+		b.GoListCount = b.GoPutCount
+		fmt.Println(`overriding -L with -P`)
+	}
+	if b.GoPutCount < b.GoDelCount {
+		b.GoDelCount = b.GoPutCount
+		fmt.Println(`overriding -D with -P`)
+	}
+	fmt.Println(`configuration:`,
+		b.Endpoint, b.AccessKey, b.SecretKey,
+		`-P`, b.GoPutCount,
+		`-G`, b.GoGetCount,
+		`-L`, b.GoListCount,
+		`-D`, b.GoDelCount,
+		`-s`, b.DurationSeconds,
+		`-d`, b.DeltaDurationSeconds,
+		`-r`, b.InitialSeed,
+		`-f1`, b.MaxFolder1Capacity,
+		`-f2`, b.MaxFolder2Capacity,
+		`-f3`, b.MaxFolder3Capacity,
+		`-b`, b.BucketName)
 	return ``, 0
 }
 

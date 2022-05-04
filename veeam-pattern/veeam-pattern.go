@@ -152,7 +152,7 @@ other flags:
 eg. UUID1/UUID2/blocks/HEX3/NUM4.HEX5.HEX6
          ^ -f1        ^ -f2  ^ -f3
 
-so f1 x f2 x f3 = total number of objects inside UUID1 folder  
+so f1 x f2 x f3 = total number of objects inside UUID1 folder
 `, 1
 	}
 	if l < 3 {

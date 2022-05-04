@@ -114,7 +114,10 @@ type BenchConfig struct {
 	Endpoint             string
 	AccessKey            string
 	SecretKey            string
-	GoRoutineCount       int
+	GoPutCount           int
+	GoGetCount           int
+	GoListCount          int
+	GoDelCount           int
 	DurationSeconds      int
 	DeltaDurationSeconds int
 	InitialSeed          uint64
@@ -124,15 +127,21 @@ type BenchConfig struct {
 	BucketName           string
 }
 
+func (b *BenchConfig) MaxRoutineCount() int {
+	ints := []int{b.GoPutCount, b.GoGetCount, b.GoListCount, b.GoDelCount}
+	sort.Ints(ints)
+	return ints[len(ints)-1]
+}
+
 func (b *BenchConfig) ParseFromArgs(args []string) (string, int) {
 	l := len(args)
 	if l == 0 {
 		return `software to benchmark AWS S3-compatible service against VEEAM pattern
 
-put     -------------------- 
+put     --------------------
 get         --------------------
 list             --------------------
-delete                -------------------- 
+delete                --------------------
                  |....| --> delta duration (-d)
         |..................| --> duration (-s)
 
@@ -140,12 +149,16 @@ usage:
   veeam-pattern ENDPOINT_URL ACCESS_KEY SECRET_KEY [other flags]
 
 other flags:
--n goroutine count (int, default: 1, min: 1)
+-n set goroutine equivalent count for all APIs (int, default: 1, min: 1)
+-P set goroutine count for PutObject (int, default: 1, min: 1)
+-G set goroutine count for GetObject (int, default: 1, min: 1)
+-L set goroutine count for ListObjects (int, default: 1, min: 1)
+-D set goroutine count for DeleleteObject (int, default: 1, min: 1)
 -s duration seconds (int, default: 60, min: 4)
 -d delta duration seconds (int, default: 5, min: 1)
 -r seed value (uint64, default: 1 not randomized)
 -f1 maximum number of content inside 1st level uuid folder (int, default: 10, min: 2)
--f2 maximum number of content inside 2nd level uuid folder (int, default: 10, min: 2) 
+-f2 maximum number of content inside 2nd level uuid folder (int, default: 10, min: 2)
 -f3 maximum number of content inside 3rd level hex folder (int, default: 10, min: 2)
 -b bucket name (string, default: veeam-test)
 
@@ -187,8 +200,20 @@ so f1 x f2 x f3 = total number of objects inside UUID1 folder
 		}
 		val := args[z+1]
 		switch key {
+		case `-P`:
+			b.GoPutCount = i(val, 1)
+		case `-G`:
+			b.GoGetCount = i(val, 1)
+		case `-D`:
+			b.GoDelCount = i(val, 1)
+		case `-L`:
+			b.GoListCount = i(val, 1)
 		case `-n`:
-			b.GoRoutineCount = i(val, 1)
+			x := i(val, 1)
+			b.GoPutCount = x
+			b.GoGetCount = x
+			b.GoListCount = x
+			b.GoDelCount = x
 		case `-s`:
 			b.DurationSeconds = i(val, 4)
 		case `-d`:
@@ -210,7 +235,10 @@ so f1 x f2 x f3 = total number of objects inside UUID1 folder
 
 func (b *BenchConfig) SetDefaults() {
 	b.InitialSeed = 1
-	b.GoRoutineCount = 1
+	b.GoPutCount = 1
+	b.GoGetCount = 1
+	b.GoListCount = 1
+	b.GoDelCount = 1
 	b.DurationSeconds = 60
 	b.DeltaDurationSeconds = 5
 	b.MaxFolder1Capacity = 10
@@ -301,9 +329,9 @@ type BenchmarkSuite struct {
 }
 
 func (s *BenchmarkSuite) FromConfig(b *BenchConfig) *BenchmarkSuite {
-	s.Runner = make([]BenchmarkSteps, b.GoRoutineCount)
+	s.Runner = make([]BenchmarkSteps, b.MaxRoutineCount())
 	s.Config = b
-	for z := 0; z < b.GoRoutineCount; z++ {
+	for z := 0; z < b.MaxRoutineCount(); z++ {
 		s.Runner[z] = BenchmarkSteps{
 			PutSeed: Seed(b.InitialSeed + uint64(z)),
 			Config:  b,
@@ -361,7 +389,7 @@ func (s *BenchmarkSuite) Run() {
 
 	// prepare runner
 	wg := sync.WaitGroup{}
-	l := s.Config.GoRoutineCount
+	l := s.Config.MaxRoutineCount()
 	wg.Add(l)
 	term := goterminal.New(os.Stderr)
 
@@ -431,7 +459,7 @@ func (s *BenchmarkSuite) AveragePutDuration() (avg float64) {
 	for z := range s.Runner {
 		avg += float64(s.Runner[z].PutMillis)
 	}
-	avg /= float64(s.Config.GoRoutineCount)
+	avg /= float64(s.Config.GoPutCount)
 	avg /= 1e3 // millis to sec
 	return
 }
@@ -440,7 +468,7 @@ func (s *BenchmarkSuite) AverageGetDuration() (avg float64) {
 	for z := range s.Runner {
 		avg += float64(s.Runner[z].GetMillis)
 	}
-	avg /= float64(s.Config.GoRoutineCount)
+	avg /= float64(s.Config.GoGetCount)
 	avg /= 1e3 // millis to sec
 	return
 }
@@ -449,7 +477,7 @@ func (s *BenchmarkSuite) AverageListDuration() (avg float64) {
 	for z := range s.Runner {
 		avg += float64(s.Runner[z].ListMillis)
 	}
-	avg /= float64(s.Config.GoRoutineCount)
+	avg /= float64(s.Config.GoListCount)
 	avg /= 1e3 // millis to sec
 	return
 }
@@ -458,7 +486,7 @@ func (s *BenchmarkSuite) AverageDelDuration() (avg float64) {
 	for z := range s.Runner {
 		avg += float64(s.Runner[z].DelMillis)
 	}
-	avg /= float64(s.Config.GoRoutineCount)
+	avg /= float64(s.Config.GoDelCount)
 	avg /= 1e3 // millis to sec
 	return
 }
@@ -483,15 +511,38 @@ type BenchmarkSteps struct {
 	Objects   []string
 }
 
-func (r *BenchmarkSteps) Run(_ int) {
+func (r *BenchmarkSteps) Run(n int) {
 	// prepare progress bar
 	r.WaitGroup = sync.WaitGroup{}
 	deltaDur := time.Duration(r.Config.DeltaDurationSeconds) * time.Second
-	r.WaitGroup.Add(4)
-	go r.RunGet(deltaDur)
-	go r.RunList(2 * deltaDur)
-	go r.RunDel(3 * deltaDur)
-	r.RunPut()
+
+	bi := func(v bool) int {
+		if v {
+			return 1
+		}
+		return 0
+	}
+
+	runGet := n < r.Config.GoGetCount
+	runList := n < r.Config.GoListCount
+	runDel := n < r.Config.GoDelCount
+	runPut := n < r.Config.GoPutCount
+
+	r.WaitGroup.Add(bi(runGet) + bi(runList) + bi(runDel) + bi(runPut))
+
+	if runGet {
+		go r.RunGet(deltaDur)
+	}
+	if runList {
+		go r.RunList(2 * deltaDur)
+	}
+	if runDel {
+		go r.RunDel(3 * deltaDur)
+	}
+	if runPut {
+		go r.RunPut()
+	}
+
 	r.WaitGroup.Wait()
 }
 
@@ -653,7 +704,7 @@ func (r *BenchmarkSteps) RunDel(delay time.Duration) {
 			log.Fatalf("FATAL: Error deleting object %s: %v", objName, err)
 		} else if resp != nil && resp.StatusCode == http.StatusServiceUnavailable {
 			atomic.AddInt64(&r.Suite.DelCount, -1)
-			atomic.AddInt64(&r.Suite.DelErr, -1)
+			atomic.AddInt64(&r.Suite.DelErr, 1)
 		} else {
 			atomic.AddInt64(&r.Suite.DelCount, 1)
 		}
